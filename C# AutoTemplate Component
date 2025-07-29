@@ -1,0 +1,243 @@
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Linq;
+using Grasshopper;
+using Grasshopper.Kernel;
+using Grasshopper.Kernel.Data;
+using Grasshopper.Kernel.Types;
+using Grasshopper.Kernel.Special;
+
+public class Script_Instance : GH_ScriptInstance
+{
+    private void RunScript(double size, bool update, ref object A)
+    {
+        // Get the current Grasshopper document
+        GH_Document doc = this.Component.OnPingDocument();
+        if (doc == null)
+        {
+            Print("Could not access Grasshopper document");
+            return;
+        }
+
+        List<string> result = new List<string>();
+
+        // Get all groups in the document
+        var groups = doc.Objects.OfType<GH_Group>().ToList();
+
+        if (groups.Count == 0)
+        {
+            Print("No groups found in the document");
+            A = "No groups found";
+            return;
+        }
+
+        // Get existing scribbles that were created by this script
+        var existingScribbles = doc.Objects.OfType<GH_Scribble>().ToList();
+
+        foreach (GH_Group group in groups)
+        {
+            string groupName = group.NickName;
+            if (string.IsNullOrEmpty(groupName))
+                groupName = "Unnamed Group";
+
+            // Skip groups that start with //
+            if (groupName.StartsWith("//"))
+            {
+                result.Add($"Skipped group '{groupName}' (starts with //)");
+                continue;
+            }
+
+            // Process group name and apply color coding
+            string processedName = ProcessGroupName(groupName);
+            ApplyGroupColor(group, groupName);
+            
+            // Check if scribble already exists for this group within the group bounds
+            var existingScribble = FindExistingScribbleInGroup(existingScribbles, group, processedName);
+
+            if (existingScribble != null)
+            {
+                if (update)
+                {
+                    // Update existing scribble
+                    UpdateScribble(existingScribble, group, size, processedName);
+                    result.Add($"Updated scribble for group '{groupName}' -> '{processedName}'");
+                }
+                else
+                {
+                    result.Add($"Scribble already exists for group '{groupName}' -> '{processedName}' (set update=true to modify)");
+                }
+            }
+            else
+            {
+                // Create new scribble only if update is true
+                if (update)
+                {
+                    CreateScribble(doc, group, processedName, size);
+                    result.Add($"Created new scribble for group '{groupName}' -> '{processedName}'");
+                }
+                else
+                {
+                    result.Add($"Would create scribble for group '{groupName}' -> '{processedName}' (set update=true to create)");
+                }
+            }
+        }
+
+        if (update)
+        {
+            doc.NewSolution(false);
+        }
+
+        A = result;
+    }
+
+    private string ProcessGroupName(string groupName)
+    {
+        // Split the group name into words
+        string[] words = groupName.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        
+        if (words.Length == 0)
+            return groupName;
+
+        // Check if first word is In, Op, Out, or Vis (case insensitive)
+        string firstWord = words[0].ToLower();
+        if (firstWord == "in" || firstWord == "op" || firstWord == "out" || firstWord == "vis")
+        {
+            // Return the remaining words joined together
+            if (words.Length > 1)
+            {
+                return string.Join(" ", words.Skip(1));
+            }
+            else
+            {
+                // If only one word and it matches, return empty or original
+                return "Group";
+            }
+        }
+
+        // Return original name if first word doesn't match
+        return groupName;
+    }
+
+    private void ApplyGroupColor(GH_Group group, string groupName)
+    {
+        // Split the group name into words
+        string[] words = groupName.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        
+        if (words.Length == 0)
+            return;
+
+        // Check if first word matches our color scheme (case insensitive)
+        string firstWord = words[0].ToLower();
+        Color newColor;
+        
+        switch (firstWord)
+        {
+            case "in":
+                newColor = Color.FromArgb(209, 142, 142); // Reddish
+                break;
+            case "out":
+                newColor = Color.FromArgb(137, 150, 122); // Greenish
+                break;
+            case "op":
+                newColor = Color.FromArgb(222, 214, 204); // Beige
+                break;
+            case "vis":
+                newColor = Color.FromArgb(185, 227, 235); // Light blue
+                break;
+            default:
+                return; // Keep current color for groups that don't match
+        }
+
+        // Apply the color to the group
+        group.Colour = newColor;
+    }
+
+    private GH_Scribble FindExistingScribbleInGroup(List<GH_Scribble> scribbles, GH_Group group, string processedName)
+    {
+        System.Drawing.RectangleF groupBounds = group.Attributes.Bounds;
+        
+        // Look for scribbles with matching text that are within or near the group bounds
+        return scribbles.FirstOrDefault(s => 
+            s.Text == processedName && 
+            IsScribbleInGroup(s, groupBounds));
+    }
+
+    private bool IsScribbleInGroup(GH_Scribble scribble, System.Drawing.RectangleF groupBounds)
+    {
+        System.Drawing.RectangleF scribbleBounds = scribble.Attributes.Bounds;
+        
+        // Check if scribble is within or overlapping the group bounds (with some tolerance)
+        return groupBounds.IntersectsWith(scribbleBounds) || 
+               (Math.Abs(scribbleBounds.X - groupBounds.X) < 50 &&
+                Math.Abs(scribbleBounds.Y - groupBounds.Y) < 50);
+    }
+
+    private void CreateScribble(GH_Document doc, GH_Group group, string processedName, double size)
+    {
+        System.Drawing.RectangleF groupBounds = group.Attributes.Bounds;
+        
+        // Position scribble at top-left of group with small offset
+        System.Drawing.PointF scribblePosition = new System.Drawing.PointF(
+            groupBounds.X + 5, // Small offset from left edge
+            groupBounds.Y + 5  // Small offset from top edge
+        );
+
+        GH_Scribble scribble = new GH_Scribble();
+        scribble.CreateAttributes();
+        
+        scribble.Text = processedName;
+        scribble.Font = new Font("Arial", (float)Math.Max(8, size), FontStyle.Regular);
+        
+        float scribbleWidth = (float)size * 10;
+        float scribbleHeight = (float)size * 2;
+        
+        // Set bounds for bottom-left justification at top-left of group
+        scribble.Attributes.Bounds = new System.Drawing.RectangleF(
+            scribblePosition.X, 
+            scribblePosition.Y, 
+            scribbleWidth, 
+            scribbleHeight
+        );
+
+        // Set pivot at bottom-left of the scribble for bottom-left justification
+        scribble.Attributes.Pivot = new System.Drawing.PointF(
+            scribblePosition.X,
+            scribblePosition.Y + scribbleHeight
+        );
+
+        doc.AddObject(scribble, false);
+        group.AddObject(scribble.InstanceGuid);
+    }
+
+    private void UpdateScribble(GH_Scribble scribble, GH_Group group, double size, string processedName)
+    {
+        System.Drawing.RectangleF groupBounds = group.Attributes.Bounds;
+        
+        // Position scribble at top-left of group with small offset
+        System.Drawing.PointF scribblePosition = new System.Drawing.PointF(
+            groupBounds.X + 5, // Small offset from left edge
+            groupBounds.Y + 5  // Small offset from top edge
+        );
+
+        scribble.Text = processedName;
+        scribble.Font = new Font("Arial", (float)Math.Max(8, size), FontStyle.Regular);
+        
+        float scribbleWidth = (float)size * 10;
+        float scribbleHeight = (float)size * 2;
+        
+        // Set bounds for bottom-left justification at top-left of group
+        scribble.Attributes.Bounds = new System.Drawing.RectangleF(
+            scribblePosition.X, 
+            scribblePosition.Y, 
+            scribbleWidth, 
+            scribbleHeight
+        );
+
+        // Set pivot at bottom-left of the scribble for bottom-left justification
+        scribble.Attributes.Pivot = new System.Drawing.PointF(
+            scribblePosition.X,
+            scribblePosition.Y + scribbleHeight
+        );
+    }
+}
