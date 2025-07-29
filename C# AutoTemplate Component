@@ -59,9 +59,9 @@ public class Script_Instance : GH_ScriptInstance
             {
                 if (update)
                 {
-                    // Update existing scribble
+                    // Update existing scribble but keep its position
                     UpdateScribble(existingScribble, group, size, processedName);
-                    result.Add($"Updated scribble for group '{groupName}' -> '{processedName}'");
+                    result.Add($"Updated scribble for group '{groupName}' -> '{processedName}' (kept position)");
                 }
                 else
                 {
@@ -212,32 +212,27 @@ public class Script_Instance : GH_ScriptInstance
 
     private void UpdateScribble(GH_Scribble scribble, GH_Group group, double size, string processedName)
     {
-        System.Drawing.RectangleF groupBounds = group.Attributes.Bounds;
+        // Preserve the current position of the existing scribble
+        System.Drawing.RectangleF currentBounds = scribble.Attributes.Bounds;
+        System.Drawing.PointF currentPivot = scribble.Attributes.Pivot;
         
-        // Position scribble at top-left of group with small offset
-        System.Drawing.PointF scribblePosition = new System.Drawing.PointF(
-            groupBounds.X + 5, // Small offset from left edge
-            groupBounds.Y + 5  // Small offset from top edge
-        );
-
+        // Update text and font but keep position
         scribble.Text = processedName;
         scribble.Font = new Font("Arial", (float)Math.Max(8, size), FontStyle.Regular);
         
+        // Calculate new dimensions but keep the current position
         float scribbleWidth = (float)size * 10;
         float scribbleHeight = (float)size * 2;
         
-        // Set bounds for bottom-left justification at top-left of group
+        // Keep the scribble at its current position, only update size
         scribble.Attributes.Bounds = new System.Drawing.RectangleF(
-            scribblePosition.X, 
-            scribblePosition.Y, 
-            scribbleWidth, 
-            scribbleHeight
+            currentBounds.X,  // Keep current X position
+            currentBounds.Y,  // Keep current Y position
+            scribbleWidth,    // Update width based on size
+            scribbleHeight    // Update height based on size
         );
 
-        // Set pivot at bottom-left of the scribble for bottom-left justification
-        scribble.Attributes.Pivot = new System.Drawing.PointF(
-            scribblePosition.X,
-            scribblePosition.Y + scribbleHeight
-        );
+        // Keep the current pivot point (don't move it)
+        scribble.Attributes.Pivot = currentPivot;
     }
 }
