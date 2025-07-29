@@ -15,3 +15,4 @@ Scribble font size is controlled by the size input, with a default layout and al
 Outputs a list of actions taken (or that would be taken) for each group, helping you keep track of changes.
 
 
+![autotemplate2](https://github.com/user-attachments/assets/34b1fa79-9e10-4a00-9088-c2f5741e8fe9)
