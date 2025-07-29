@@ -13,3 +13,5 @@ If update is false, no changes are made—only a report is generated showing wha
 Scribble font size is controlled by the size input, with a default layout and alignment for clarity.
 
 Outputs a list of actions taken (or that would be taken) for each group, helping you keep track of changes.
+
+
